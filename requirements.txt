@@ -1,0 +1,10 @@
+# Python packages for aura_health_profile scripts.
+#
+# PDF (md_to_pdf.py): pandoc is NOT a pip package — install the binary separately
+#   (e.g. brew install pandoc). The script uses pandoc when it is on PATH; otherwise
+#   it falls back to fpdf2 (listed below). For Chinese/CJK or complex Markdown,
+#   installing pandoc is strongly recommended.
+
+requests>=2.28.0
+markdown>=3.4
+fpdf2>=2.7.0
