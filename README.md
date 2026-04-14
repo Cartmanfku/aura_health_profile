@@ -41,9 +41,8 @@ Then see `SKILL.md` (English) or `SKILL_CN.md` (Simplified Chinese) for detailed
 
 ## GitHub
 
-- Repository: `TBD` (reserved)
-- Issues: `TBD` (reserved)
-- Pull Requests: `TBD` (reserved)
+- Repository: https://github.com/Cartmanfku/aura_health_profile
+
 
 ## Project Commitment
 

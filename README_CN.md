@@ -41,9 +41,8 @@ flowchart LR
 
 ## GitHub
 
-- 仓库地址：`TBD`（预留）
-- Issues：`TBD`（预留）
-- Pull Requests：`TBD`（预留）
+- 仓库地址：https://github.com/Cartmanfku/aura_health_profile
+
 
 ## 项目承诺
 
