@@ -1,5 +1,5 @@
 ---
-name: aura_health_profile
+name: aura_health_profile(奥拉健康档案)
 description: "**将繁琐的病历管理，变为安心的日常陪伴。** 一款专为慢性病患者设计的智能健康助手技能，基于阿里云百炼 Qwen 与 Wan 模型，帮你把散乱的化验单、病历、药盒说明变成清晰易懂的健康档案与复诊简报。"
 version: 1.0.0
 author: cartman
@@ -56,7 +56,7 @@ metadata:
 | 最近一次构建/更新的 QC（JSON） | `~/.aura-health/last_profile_qc.json` |
 | 档案合并状态（更新模式） | `~/.aura-health/profile_merge_state.json` |
 | 完整档案 MD/PDF | `~/Documents/AuraHealth/health_profile_YYYYMMDD.md` 及 `.pdf` |
-| 简报相关资源 | `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.md`、`~/Documents/AuraHealth/brief_YYYYMMDD.png`、`~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf` |
+| 简报相关资源 | `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.md`、`~/Documents/AuraHealth/brief_YYYYMMDD.png`（给医生的样式化一页图）、`~/Documents/AuraHealth/brief_user_comic_YYYYMMDD.png`（6–9 格通俗漫画）、`~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf` |
 
 写入前请确保 `~/Documents/AuraHealth/` 与 `~/.aura-health/` 可用（脚本也会按需创建）。
 
@@ -242,11 +242,12 @@ metadata:
    - 读取最新完整档案 Markdown。  
    - 使用 `{baseDir}/assets/brief_template.md` 由 Qwen 摘要为一份简报 Markdown：`~/Documents/AuraHealth/revisit_brief_YYYYMMDD.md`。
 
-2. **同源生成样式图与 PDF**  
-   - 以上述简报 Markdown 作为唯一内容源。  
-   - 由 Wan 2.7 生成样式化简报图（分区布局、关键信息高亮、轻量指标可视化）→ `~/Documents/AuraHealth/brief_YYYYMMDD.png`。  
-   - 将同一份 Markdown 转 PDF → `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf`（由编排脚本内部调用 `{baseDir}/scripts/md_to_pdf.py`）。
-   - 编排入口：`{baseDir}/scripts/generate_brief.py`。
+2. **同源生成医生版样式图、用户版漫画图与 PDF**  
+   - 以上述简报 Markdown 作为唯一内容源（正文面向医生，保留专业表述）。  
+   - Wan 2.7 生成**医生向**样式化一页图（分区、重点高亮、轻量指标可视化）→ `~/Documents/AuraHealth/brief_YYYYMMDD.png`。  
+   - Qwen 根据同一份简报生成 **6–9 格**通俗漫画分镜脚本，再由 Wan 出图，供患者/家属阅读 → `~/Documents/AuraHealth/brief_user_comic_YYYYMMDD.png`。  
+   - 将同一份 Markdown 转 PDF → `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf`（编排脚本内部调用 `{baseDir}/scripts/md_to_pdf.py`）。
+   - 编排入口：`{baseDir}/scripts/generate_brief.py`。若只需一张图、节省第二次出图费用，可加 `--skip-user-comic` 或设置环境变量 `AURA_BRIEF_SKIP_USER_COMIC=1`。
 
    **可执行命令**（默认：自动读取最新 `health_profile_*.md`、当天日期）：
 
@@ -262,7 +263,7 @@ metadata:
      --date 20260414
    ```
 
-   可选：`--text-model MODEL`（默认 `qwen3.6-plus`）、`--image-model MODEL`（默认 `wan2.7-image-pro`）、`--size 1024*1024`、`--timeout SEC`。
+   可选：`--text-model MODEL`（默认 `qwen3.6-plus`）、`--image-model MODEL`（默认 `wan2.7-image-pro`）、`--size 1024*1024`、`--comic-size 1024*1792`、`--timeout SEC`、`--skip-user-comic`。
 
 ## 智能体执行注意
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate revisit brief markdown, PDF, and styled image from profile."""
+"""Generate revisit brief markdown, PDF, doctor-facing styled image, and user comic image."""
 
 from __future__ import annotations
 
@@ -266,9 +266,59 @@ def _render_image(
         time.sleep(max(0.5, poll_interval))
 
 
+def _comic_storyboard_prompt(*, summary_md: str, use_chinese: bool) -> str:
+    """Ask the text model for a 6–9 panel plain-language comic script."""
+    if use_chinese:
+        return f"""下面是「给复诊医生看的」专业复诊简报（Markdown）。请**不要新增**简报以外的医学信息，只做通俗化整理。
+
+请输出 **6 到 9 格**漫画分镜脚本，与简报内容一一对应（可合并相近小节，但总格数须在 6–9 之间）。
+
+**输出格式（严格遵守；一格一块）：**
+---PANEL N---
+TITLE: （该格短标题，口语化，≤18 字）
+CAPTION: （对白或旁白 1–3 句，日常用语，语气平和、支持性）
+
+专业简报原文：
+{summary_md}
+"""
+    return f"""Below is a **physician-facing** revisit brief in Markdown. Do **not** add medical facts beyond this brief; only simplify wording for a lay reader.
+
+Produce a **6 to 9 panel** comic storyboard that mirrors the same content (you may merge adjacent sections, but the panel count must be between 6 and 9 inclusive).
+
+**Output format (strict; one block per panel):**
+---PANEL N---
+TITLE: (short plain-language headline, <=12 words)
+CAPTION: (1-3 short sentences for speech bubble or narration; everyday vocabulary; calm supportive tone)
+
+Professional brief:
+{summary_md}
+"""
+
+
+def _comic_image_prompt(*, storyboard: str, use_chinese: bool) -> str:
+    lang = (
+        "All visible text in the image must be in **Simplified Chinese**, matching the storyboard verbatim."
+        if use_chinese
+        else "All visible text in the image must be in **English**, matching the storyboard verbatim."
+    )
+    return (
+        "Create **one single image**: a friendly, educational **comic strip** for adult patients and family. "
+        "Layout: **6 to 9 clearly separated panels** in a neat grid (for example 3 columns × 3 rows for nine panels, "
+        "or 2×4 / 3×2 for six to eight panels). Rounded panel frames, generous margins, high legibility on mobile.\n"
+        "Art style: soft pastel palette, simple rounded shapes, a **consistent** cute simplified mascot character "
+        "(neutral adult, non-realistic) appearing across panels where a human helps carry the story; gentle medical icons only, "
+        "no gore, no frightening anatomy. Speech bubbles and narration boxes contain **only** the captions from the storyboard.\n"
+        f"{lang}\n"
+        "Typography: large clear fonts; high contrast; no watermark; no logos; no QR codes.\n"
+        "Do not add medical claims beyond the storyboard text.\n\n"
+        "**Storyboard — render these titles and captions verbatim in the bubbles:**\n\n"
+        f"{storyboard.strip()}\n"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate revisit brief markdown, PDF, and image."
+        description="Generate revisit brief markdown, PDF, doctor brief image, and user comic image."
     )
     parser.add_argument(
         "--profile",
@@ -306,6 +356,16 @@ def main() -> None:
         default=300,
         help="Timeout seconds for each image generation task (default: 300)",
     )
+    parser.add_argument(
+        "--skip-user-comic",
+        action="store_true",
+        help="Skip the lay-language 6–9 panel comic image (second Wan call).",
+    )
+    parser.add_argument(
+        "--comic-size",
+        default="1024*1792",
+        help="Wan size for user comic image (default: 1024*1792, portrait)",
+    )
     args = parser.parse_args()
 
     ensure_state_dirs()
@@ -340,8 +400,17 @@ def main() -> None:
         else "Output in concise English."
     )
 
+    audience_rule = (
+        "本简报主要供**复诊门诊医生**快速阅读：对疾病、用药、化验与症状请使用**规范医学术语**，信息准确、条理清楚，不口语化。"
+        if use_chinese
+        else (
+            "Write primarily for **physician handoff at an outpatient revisit**: use **standard clinical terminology** "
+            "for conditions, medications, labs, and symptoms. Keep tone professional and scannable, not colloquial."
+        )
+    )
     summary_user = f"""Create a short revisit brief card from this chronic-care profile.
 Follow the template exactly and keep it concise. {language_rule}
+{audience_rule}
 
 Template:
 {template_text}
@@ -354,7 +423,8 @@ Profile markdown:
             {
                 "role": "system",
                 "content": (
-                    "You produce brief, factual medical visit prep summaries. "
+                    "You produce brief, factual medical visit prep summaries for clinician review. "
+                    "Prefer precise clinical wording appropriate for a doctor-facing revisit handoff. "
                     "No diagnosis or treatment advice."
                 ),
             },
@@ -397,6 +467,7 @@ Profile markdown:
     )
 
     brief_png = OUTPUT_ROOT / f"brief_{ymd}.png"
+    comic_png = OUTPUT_ROOT / f"brief_user_comic_{ymd}.png"
     out_pdf = OUTPUT_ROOT / f"revisit_brief_{ymd}.pdf"
 
     _render_image(
@@ -407,6 +478,47 @@ Profile markdown:
         timeout_seconds=args.timeout,
         poll_interval=args.poll_interval,
     )
+
+    skip_comic = args.skip_user_comic or (
+        os.environ.get("AURA_BRIEF_SKIP_USER_COMIC", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    if not skip_comic:
+        comic_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You rewrite clinician-facing revisit briefs into plain-language comic storyboards for patients. "
+                    "Strictly avoid new medical claims beyond the supplied brief. No diagnosis or treatment instructions."
+                    if not use_chinese
+                    else (
+                        "你将给医生看的专业复诊简报改写为患者及家属能读懂的漫画分镜脚本。"
+                        "严禁添加简报以外的医学信息；不进行诊断或用药/治疗指导。"
+                    )
+                ),
+            },
+            {
+                "role": "user",
+                "content": _comic_storyboard_prompt(summary_md=summary_md, use_chinese=use_chinese),
+            },
+        ]
+        comic_storyboard = chat_completions(
+            comic_messages,
+            model=args.text_model,
+            max_tokens=4096,
+        ).strip()
+        comic_image_prompt = _comic_image_prompt(
+            storyboard=comic_storyboard,
+            use_chinese=use_chinese,
+        )
+        _render_image(
+            prompt=comic_image_prompt,
+            output_path=comic_png,
+            model=args.image_model,
+            size=args.comic_size,
+            timeout_seconds=args.timeout,
+            poll_interval=args.poll_interval,
+        )
     # Try CJK-aware PDF generator first, fall back to md_to_pdf
     scripts_dir = Path(__file__).resolve().parent
     gen_cjk = scripts_dir / "gen_cjk_pdf.py"
@@ -423,6 +535,8 @@ Profile markdown:
 
     print(out_md)
     print(brief_png)
+    if not skip_comic:
+        print(comic_png)
     print(out_pdf)
 
 

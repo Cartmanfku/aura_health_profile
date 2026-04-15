@@ -1,5 +1,5 @@
 ---
-name: aura_health_profile
+name: aura_health_profile(奥拉健康档案)
 description: "**将繁琐的病历管理，变为安心的日常陪伴。** 一款专为慢性病患者设计的智能健康助手技能，基于阿里云百炼 Qwen 与 Wan 模型，帮你把散乱的化验单、病历、药盒说明变成清晰易懂的健康档案与复诊简报。"
 version: 1.0.0
 author: cartman
@@ -54,7 +54,7 @@ Chronic-care workflow: **parse images → structured records + metrics → full 
 | Last build/update QC (JSON) | `~/.aura-health/last_profile_qc.json` |
 | Profile merge state (update mode) | `~/.aura-health/profile_merge_state.json` |
 | Full profile MD/PDF | `~/Documents/AuraHealth/health_profile_YYYYMMDD.md` and `.pdf` |
-| Brief assets | `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.md`, `~/Documents/AuraHealth/brief_YYYYMMDD.png`, `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf` |
+| Brief assets | `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.md`, `~/Documents/AuraHealth/brief_YYYYMMDD.png` (doctor-facing styled sheet), `~/Documents/AuraHealth/brief_user_comic_YYYYMMDD.png` (6–9 panel lay-language comic), `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf` |
 
 Ensure `~/Documents/AuraHealth/` and `~/.aura-health/` exist before writing outputs.
 
@@ -210,11 +210,12 @@ When consolidating with the model, choose localized assets by preferred language
    - Read latest full profile MD.  
    - Qwen summarizes using `{baseDir}/assets/brief_template.md` into one brief markdown: `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.md`.
 
-2. **Styled brief image + PDF (same source content)**  
+2. **Styled brief image + lay-language comic + PDF (same textual source)**  
    - Use the generated brief markdown as the single source.  
-   - Wan 2.7 renders a styled image with sectioned layout, key-item highlights, and lightweight indicator visualization → `~/Documents/AuraHealth/brief_YYYYMMDD.png`.  
+   - Wan 2.7 renders a **doctor-facing** styled one-pager (clinical layout, professional terminology preserved) → `~/Documents/AuraHealth/brief_YYYYMMDD.png`.  
+   - Qwen then derives a **6–9 panel** plain-language comic storyboard from the same brief; Wan renders it for patients/families → `~/Documents/AuraHealth/brief_user_comic_YYYYMMDD.png`.  
    - Convert the same markdown to PDF → `~/Documents/AuraHealth/revisit_brief_YYYYMMDD.pdf` (via `{baseDir}/scripts/md_to_pdf.py` inside the orchestrator).
-   - Implementation entry: `{baseDir}/scripts/generate_brief.py`.
+   - Implementation entry: `{baseDir}/scripts/generate_brief.py`. Pass `--skip-user-comic` (or set `AURA_BRIEF_SKIP_USER_COMIC=1`) to skip the second Wan call.
 
    **Runnable command** (default: latest `health_profile_*.md`, today date):
 
@@ -230,7 +231,7 @@ When consolidating with the model, choose localized assets by preferred language
      --date 20260414
    ```
 
-   Optional: `--text-model MODEL` (default `qwen3.6-plus`), `--image-model MODEL` (default `wan2.7-image-pro`), `--size 1024*1024`, `--timeout SEC`.
+   Optional: `--text-model MODEL` (default `qwen3.6-plus`), `--image-model MODEL` (default `wan2.7-image-pro`), `--size 1024*1024`, `--comic-size 1024*1792`, `--timeout SEC`, `--skip-user-comic`.
 
 ## Agent execution notes
 
