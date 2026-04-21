@@ -1,7 +1,7 @@
 ---
 name: aura_health_profile(奥拉健康档案)
 description: "**将繁琐的病历管理，变为安心的日常陪伴。** 一款专为慢性病患者设计的智能健康助手技能，基于阿里云百炼 Qwen 与 Wan 模型，帮你把散乱的化验单、病历、药盒说明变成清晰易懂的健康档案与复诊简报。"
-version: 1.0.0
+version: 1.1.0
 author: cartman
 metadata:
   openclaw:
@@ -18,18 +18,19 @@ metadata:
       config:
         - ~/.aura-health/config.json
     primaryEnv: DASHSCOPE_API_KEY
+    homepage: https://github.com/Cartmanfku/aura_health_profile
 ---
 
 # Aura Health Profile
 
-Chronic-care workflow: **parse images → structured records + metrics → full profile MD/PDF → revisit brief (profile-based summary to MD/PDF + styled image)**. Prefer running the shipped Python scripts under `{baseDir}/scripts/` rather than reimplementing API calls ad hoc.
+Chronic-care workflow: **parse images and PDF pages → structured records + metrics → full profile MD/PDF → revisit brief (profile-based summary to MD/PDF + styled image)**. Prefer running the shipped Python scripts under `{baseDir}/scripts/` rather than reimplementing API calls ad hoc.
 
 ## Prerequisites and setup
 
 **What you need**
 
 - **Python 3** and the packages in `{baseDir}/requirements.txt` (installed via the commands below).
-- **PDF (optional but recommended)** — When exporting Markdown to PDF, prefer this order: **(1)** the **pdf-generator** skill if it is installed in the agent (use it per that skill’s instructions); **(2)** [pandoc](https://pandoc.org) on `PATH` (not a Python package — install the binary separately, e.g. macOS: `brew install pandoc`); **(3)** `{baseDir}/scripts/md_to_pdf.py`, which uses pandoc when available and otherwise **fpdf2** from `requirements.txt`. For Chinese/CJK and complex Markdown, prefer (1) or (2) over the fpdf2 fallback inside (3).
+- **PDF (optional but recommended)** — When exporting Markdown to PDF, prefer this order: **(1)** the **pdf-generator** skill if it is installed in the agent (use it per that skill’s instructions); **(2)** [pandoc](https://pandoc.org) on `PATH` (not a Python package — install the binary separately, e.g. macOS: `brew install pandoc`); **(3)** `{baseDir}/scripts/md_to_pdf.py`, which uses pandoc when available and otherwise **mistune + ReportLab** (parses Markdown to an AST and lays out PDF directly; embeds CJK when a system font is found or when `AURA_PDF_FONT` points to a `.ttf`/`.ttc`). For the richest Markdown features, prefer (1) or (2).
 - **DashScope API key** (Alibaba Cloud Bailian / Model Studio), read by `{baseDir}/scripts/config.py`:  
   - Preferred: `export DASHSCOPE_API_KEY="sk-..."`  
   - Or: `~/.aura-health/config.json` with `{ "dashscope_api_key": "sk-..." }`
@@ -44,13 +45,26 @@ Chronic-care workflow: **parse images → structured records + metrics → full 
 
 `ONBOARD.md` covers environment checks, API-key setup + connectivity verification, PDF tool selection, preferred language configuration, and post-setup examples.
 
+## Build mode selection
+
+Choose one mode before running merge scripts (parse scripts are the same in both modes):
+
+- **Quick Merge mode (default)**  
+  - Scripts: `build_profile.py` / `update_profile.py`  
+  - Use when records are limited in size and timeline span.
+- **Staged Summary mode**  
+  - Scripts: `build_profile_sharded.py` / `update_profile_sharded.py`  
+  - Use when records accumulate over long periods (for example multi-year history, many PDFs, or very large intermediate sets).
+
+Quick rule of thumb: if intermediate files are numerous (for example, >50) or cover many years, prefer **Staged Summary mode**.
+
 ## Paths
 
 | Role | Path |
 |------|------|
-| Intermediate MD (per image) | `~/.aura-health/intermediate/{date}_{type}_{hash8}.md` |
+| Intermediate MD (per raster image or PDF page) | `~/.aura-health/intermediate/{date}_{type}_{hash8}.md` |
 | Time-series metrics | `~/.aura-health/metrics.json` |
-| Processed image hashes (incremental) | `~/.aura-health/processed.json` |
+| Processed content hashes (incremental; whole image file, or per-PDF-page digest) | `~/.aura-health/processed.json` |
 | Last build/update QC (JSON) | `~/.aura-health/last_profile_qc.json` |
 | Profile merge state (update mode) | `~/.aura-health/profile_merge_state.json` |
 | Full profile MD/PDF | `~/Documents/AuraHealth/health_profile_YYYYMMDD.md` and `.pdf` |
@@ -62,10 +76,10 @@ Ensure `~/Documents/AuraHealth/` and `~/.aura-health/` exist before writing outp
 
 - `{baseDir}/SKILL.md` — this file (canonical metadata for ClawHub)  
 - `{baseDir}/SKILL_CN.md` — Simplified Chinese mirror  
-- `{baseDir}/ONBOARD.md`, `{baseDir}/README.md`, `{baseDir}/PUBLISHING.md`, `{baseDir}/LICENSE` — onboarding and human docs; `LICENSE` is MIT-0  
+- `{baseDir}/ONBOARD.md`, `{baseDir}/README.md`, `{baseDir}/PUBLISHING.md`, `{baseDir}/PUBLISHING_CN.md`, `{baseDir}/CHANGELOG.md`, `{baseDir}/CHANGELOG_CN.md`, `{baseDir}/LICENSE` — onboarding, publishing, changelog, and license; `LICENSE` is MIT-0  
 - `{baseDir}/requirements.txt` — Python dependencies (`pip` / venv)  
 - `{baseDir}/.clawhubignore` — paths excluded from ClawHub zip publish  
-- `{baseDir}/scripts/` — shipped: `config.py`, `vision_parser.py`, `intermediate_qc.py`, `build_profile.py`, `update_profile.py`, `profile_merge_state.py`, `md_to_pdf.py`, `generate_brief.py`  
+- `{baseDir}/scripts/` — shipped: `config.py`, `vision_parse_common.py`, `vision_parser.py`, `pdf_vision_parser.py`, `pdf_bundle_builder.py`, `intermediate_qc.py`, `build_profile.py`, `build_profile_sharded.py`, `update_profile.py`, `update_profile_sharded.py`, `profile_merge_state.py`, `md_to_pdf.py`, `generate_brief.py`  
 - `{baseDir}/references/medical_reference.md`, `{baseDir}/references/medical_reference_cn.md` — English / Simplified Chinese normalization hints  
 - `{baseDir}/assets/profile_template.md`, `{baseDir}/assets/profile_template_cn.md`, `{baseDir}/assets/brief_template.md`, `{baseDir}/assets/brief_template_cn.md` — profile / brief templates (EN + zh-CN)  
 
@@ -75,15 +89,11 @@ When consolidating with the model, choose localized assets by preferred language
 
 **Trigger:** First-time use, or the user asks to rebuild or initialize the medical record.
 
-1. **Parse images**  
-   - Scan the user-given directory for `.jpg` / `.jpeg` / `.png`.  
-   - For each file, call Qwen 3.6 Plus to extract structured text.  
-   - Write one intermediate file per image under `~/.aura-health/intermediate/` using the naming pattern above.  
-   - Append extracted numeric lab metrics to `~/.aura-health/metrics.json` (time-ordered).  
-   - Record content hashes in `~/.aura-health/processed.json` to support later incremental runs.  
-   - Implementation: `{baseDir}/scripts/vision_parser.py` (user supplies input directory). The script **writes `processed.json` and `metrics.json` to disk every `--batch-size` image(s)** (default `5`) so API rate limits or timeouts lose at most one batch; use `--batch-size 1` for maximum safety. **Progress** (total count, completed count, new writes this run, estimated time remaining) is printed to **stderr**; paths of new intermediate `.md` files stay on **stdout**. **`--quiet`** suppresses the progress lines (batch saves still run). **Ctrl+C** saves state before exit.
+1. **Parse inputs (images vs PDFs — two scripts)**  
+   - **Raster images** (`.jpg` / `.jpeg` / `.png` / `.webp`): `{baseDir}/scripts/vision_parser.py`. Each file → one intermediate Markdown. **`processed.json` + `metrics.json` are flushed every `--batch-size` image(s)** (default `5`; use `1` to minimize loss if the process stops mid-folder). Each successful image writes its `.md` **before** the next flush; if a later image fails, earlier `.md` files remain on disk. If the process dies after writing an `.md` but before the next flush, the next run still skips those sources because `vision_parse_common.load_existing_intermediate_hashes()` rescans comment headers. **Ctrl+C** flushes current state.  
+   - **PDF reports** (`.pdf`): `{baseDir}/scripts/pdf_vision_parser.py`. **PyMuPDF** rasterizes each page; **one Markdown per page**. After **each successful page**, the script writes that page’s `.md` and **immediately flushes** `processed.json` and `metrics.json`, so a failure on a later page does not lose completed pages—re-run without `--force` to resume only missing pages. **Document date and document type** are taken from **page 1** (cover) and written consistently into every page’s `## Document metadata` block (inner pages are normalized to match). Prompts and RGB rendering aim to reduce garbled Chinese. For long reports, the parser can also build a compressed PDF bundle (`--bundle-threshold-pages`, `--bundle-chunk-pages`; disable via `--no-bundle`), and profile merge can prefer bundles via `build_profile.py --pdf-input-mode auto|bundle`.
 
-   **Runnable commands** :
+   **Images — runnable commands** :
 
    ```bash
    ./.venv/bin/python3 scripts/vision_parser.py "/absolute/path/to/folder/with/photos"
@@ -95,16 +105,29 @@ When consolidating with the model, choose localized assets by preferred language
    ./.venv/bin/python3 scripts/vision_parser.py --recursive "/absolute/path/to/folder/with/photos"
    ```
 
-   Optional: `--force` re-parse even if the image hash is already in `processed.json`; `--model MODEL` overrides the vision model (default `qwen3.6-plus`, env `AURA_VISION_MODEL`); `--batch-size N` flush state every *N* images (default `5`); `--quiet` hide progress/ETA on stderr.
+   Optional: `--force`; `--model MODEL` (env `AURA_VISION_MODEL`); `--batch-size N`; `--quiet`.
+
+   **PDFs — runnable commands** :
+
+   ```bash
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py "/absolute/path/to/folder/with/pdfs"
+   ```
+
+   ```bash
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py --recursive "/absolute/path/to/folder/with/pdfs"
+   ```
+
+   Optional: `--force`; `--model MODEL`; `--pdf-zoom Z`; `--quiet`.
 
 2. **Merge into full Markdown**  
-   - Read all `~/.aura-health/intermediate/*.md`.  
-   - Call Qwen 3.6 Plus with `{baseDir}/assets/profile_template.md` to produce one chronological, de-duplicated profile.  
-   - Save as `~/Documents/AuraHealth/health_profile_YYYYMMDD.md`.  
-   - Writes `~/.aura-health/profile_merge_state.json` for later incremental updates.  
-   - Implementation: `{baseDir}/scripts/build_profile.py`. Before calling the model, it runs **QC** on `~/.aura-health/intermediate/*.md`: files that are **duplicates** (same source-image sha256 as an earlier file, or same normalized text as an earlier file) or **abnormal** (missing sha header, too short, missing required sections, heavy replacement characters, etc.) are **excluded** from the merge and listed in `~/.aura-health/last_profile_qc.json` and in a **Build QC** table appended to the output Markdown. Only passing files are sent to the model; merge state records **included** source hashes only.
+   - Both scripts generate `health_profile_YYYYMMDD.md` and update merge state.
+   - **Important:** this step does not auto-export PDF; PDF conversion is step 3.
 
-   **Runnable commands** :
+   **Quick Merge mode (`build_profile.py`)**
+   - Reads all `~/.aura-health/intermediate/*.md` and performs one direct merge.
+   - Runs **QC** before model call; duplicate/abnormal intermediates are excluded and reported in `~/.aura-health/last_profile_qc.json` and the output Markdown.
+
+   **Runnable commands (Quick Merge mode)** :
 
    ```bash
    ./.venv/bin/python3 scripts/build_profile.py
@@ -118,10 +141,22 @@ When consolidating with the model, choose localized assets by preferred language
    ./.venv/bin/python3 scripts/build_profile.py --date 20260413
    ```
 
-   Optional: `--model MODEL` overrides the text model (default `qwen3.6-plus`, env `AURA_TEXT_MODEL`).
+  Optional: `--model MODEL` overrides the text model (default `qwen3.6-plus`, env `AURA_TEXT_MODEL`).
+
+   **Staged Summary mode (`build_profile_sharded.py`)**
+   - Uses half-year shard summaries first, then final merge.
+   - Also writes shard artifacts under `~/.aura-health/period_summaries/period_profile_YYYYH1.md` / `period_profile_YYYYH2.md` (and possibly `period_profile_undated.md`).
+
+   **Runnable commands (Staged Summary mode)**:
+
+   ```bash
+   ./.venv/bin/python3 scripts/build_profile_sharded.py
+   ```
+
+   Useful options: `--shard-mode half-year` (`year` is deprecated and auto-normalized to `half-year`); `--shard-max-chars N`; `--pdf-input-mode auto|raw|bundle`; `--pdf-bundle-threshold-pages N`; `--date YYYYMMDD`.
 
 3. **PDF**  
-   - Convert the Markdown from step 2 to `~/Documents/AuraHealth/health_profile_YYYYMMDD.pdf` (or the path you choose). **Order of preference:** **(1)** If the **pdf-generator** skill is installed, use it for this Markdown → PDF step. **(2)** Else if `pandoc` is on `PATH`, run pandoc on the `.md` file (e.g. `pandoc … -o …pdf`). **(3)** Else run `{baseDir}/scripts/md_to_pdf.py`, which uses pandoc when available and otherwise **fpdf2** (best for Latin; for Chinese/CJK or complex layout, prefer (1) or (2) or install [pandoc](https://pandoc.org)).
+   - Convert the Markdown from step 2 to `~/Documents/AuraHealth/health_profile_YYYYMMDD.pdf` (or the path you choose). **Order of preference:** **(1)** If the **pdf-generator** skill is installed, use it for this Markdown → PDF step. **(2)** Else if `pandoc` is on `PATH`, run pandoc on the `.md` file (e.g. `pandoc … -o …pdf`). **(3)** Else run `{baseDir}/scripts/md_to_pdf.py`, which uses pandoc when available and otherwise **mistune + ReportLab** (CJK via system font or `AURA_PDF_FONT`; for the richest layout, prefer (1) or (2) or install [pandoc](https://pandoc.org)).
 
    **Runnable commands** (when using step **(3)** — `md_to_pdf.py`) use the `.md` path printed by `build_profile.py`, or build it from today’s date:
 
@@ -146,29 +181,33 @@ When consolidating with the model, choose localized assets by preferred language
 
 **Trigger:** User adds new images.
 
-1. **Parse only new images** (hash not in `processed.json`); append new intermediate MD and update `metrics.json` / `processed.json`. Same script as Mode 1 step 1: `{baseDir}/scripts/vision_parser.py` (same batch saves, stderr progress, `--batch-size`, `--quiet`, and interrupt handling as above).
+1. **Parse only new images or new PDF pages** (hash not in `processed.json`); append intermediate MD and update `metrics.json` / `processed.json`. Use `{baseDir}/scripts/vision_parser.py` for new images and `{baseDir}/scripts/pdf_vision_parser.py` for new PDFs (same resume and flush semantics as Mode 1 step 1).
 
-   **Runnable commands**  point at the folder that contains the **new** photos (or the same folder as before—only unseen files are processed):
+   **New images** :
 
    ```bash
    ./.venv/bin/python3 scripts/vision_parser.py "/absolute/path/to/folder/with/new/photos"
-   ```
-
-   Include subfolders:
-
-   ```bash
    ./.venv/bin/python3 scripts/vision_parser.py --recursive "/absolute/path/to/folder/with/new/photos"
    ```
 
-   Optional: `--force` re-parses even when the image hash is already in `processed.json`; `--model MODEL` overrides the vision model (default `qwen3.6-plus`, env `AURA_VISION_MODEL`); `--batch-size N`; `--quiet`.
+   **New PDFs** :
+
+   ```bash
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py "/absolute/path/to/folder/with/new/pdfs"
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py --recursive "/absolute/path/to/folder/with/new/pdfs"
+   ```
+
+   Optional: `--force`; `--model MODEL`; for images also `--batch-size N`, `--quiet`; for PDFs also `--pdf-zoom Z`, `--quiet`.
 
 2. **Re-merge**  
-   - Load the **latest** `~/Documents/AuraHealth/health_profile_*.md` (by date in the filename) plus **new** intermediate files under `~/.aura-health/intermediate/` .  
-   - Qwen re-orders, deduplicates, and normalizes format.  
-   - Write a new `health_profile_YYYYMMDD.md` and refresh merge state.  
-   - Implementation: `{baseDir}/scripts/update_profile.py`. The same **QC** as `build_profile.py` applies to **candidate new** files (not the baseline profile); excluded files are reported in `~/.aura-health/last_profile_qc.json` (label `update`) and appended to the output Markdown. Merge state is updated as **previous merged hashes ∪ hashes from included new files**.
+   - Both update scripts load a baseline profile plus new intermediates, then write a new `health_profile_YYYYMMDD.md`.
+   - **Important:** this step does not auto-export PDF; PDF conversion is step 3.
 
-   **Runnable commands**  after step 1 added new intermediates and a baseline profile exists under `~/Documents/AuraHealth/`:
+   **Quick Merge mode (`update_profile.py`)**
+   - Uses merge state to pick new, not-yet-merged sources.
+   - Applies **QC** to current candidate new intermediates; exclusions are recorded in `~/.aura-health/last_profile_qc.json` (`label=update`).
+
+   **Runnable commands (Quick Merge mode)** after step 1 added new intermediates and a baseline profile exists under `~/Documents/AuraHealth/`:
 
    ```bash
    ./.venv/bin/python3 scripts/update_profile.py
@@ -197,7 +236,19 @@ When consolidating with the model, choose localized assets by preferred language
 
    Optional: `--model MODEL` overrides the text model (default `qwen3.6-plus`, env `AURA_TEXT_MODEL`).
 
-3. **PDF** — Same priority as **Mode 1 — step 3**: pdf-generator skill → pandoc → `md_to_pdf.py`, using the Markdown path from step 2 (`update_profile.py` output or `~/Documents/AuraHealth/health_profile_YYYYMMDD.md`). Runnable examples for `md_to_pdf.py` — see **Mode 1 — step 3** above.
+   **Staged Summary mode (`update_profile_sharded.py`)**
+   - Rebuilds only impacted time shards, then runs final merge.
+   - Reuses/updates shard artifacts under `~/.aura-health/period_summaries/period_profile_YYYYH1.md`, `period_profile_YYYYH2.md` (and possibly `period_profile_undated.md`).
+
+   **Runnable commands (Staged Summary mode)**:
+
+   ```bash
+   ./.venv/bin/python3 scripts/update_profile_sharded.py
+   ```
+
+   Useful options: `--shard-mode half-year` (`year` is deprecated and auto-normalized to `half-year`); `--shard-max-chars N`; `--pdf-input-mode auto|raw|bundle`; `--pdf-bundle-threshold-pages N`; `--full`; `--profile PATH`; `--date YYYYMMDD`.
+
+3. **PDF** — Same priority as **Mode 1 — step 3**: pdf-generator skill → pandoc → `md_to_pdf.py`, using the Markdown path from step 2 (`update_profile.py` or `update_profile_sharded.py` output, or `~/Documents/AuraHealth/health_profile_YYYYMMDD.md`). Runnable examples for `md_to_pdf.py` — see **Mode 1 — step 3** above.
 
 
 ## Mode 3 — Revisit brief (`brief`)
@@ -243,4 +294,4 @@ When consolidating with the model, choose localized assets by preferred language
 
 ## OpenClaw install hint
 
-Copy or symlink the `aura_health_profile/` skill directory into the agent workspace `skills/` (or another path configured in `skills.load.extraDirs`), then start a new session so `openclaw skills list` shows `aura_health_profile`. For ClawHub, the publish slug may need a hyphenated folder name — see `{baseDir}/PUBLISHING.md`. Chinese readers: `{baseDir}/SKILL_CN.md`.
+Copy or symlink the `aura_health_profile/` skill directory into the agent workspace `skills/` (or another path configured in `skills.load.extraDirs`), then start a new session so `openclaw skills list` shows `aura_health_profile`. For ClawHub, the publish slug may need a hyphenated folder name — see `{baseDir}/PUBLISHING.md` (Chinese: `{baseDir}/PUBLISHING_CN.md`). Chinese skill text: `{baseDir}/SKILL_CN.md`.

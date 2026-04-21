@@ -1,7 +1,7 @@
 ---
 name: aura_health_profile(奥拉健康档案)
 description: "**将繁琐的病历管理，变为安心的日常陪伴。** 一款专为慢性病患者设计的智能健康助手技能，基于阿里云百炼 Qwen 与 Wan 模型，帮你把散乱的化验单、病历、药盒说明变成清晰易懂的健康档案与复诊简报。"
-version: 1.0.0
+version: 1.1.0
 author: cartman
 metadata:
   openclaw:
@@ -18,20 +18,22 @@ metadata:
       config:
         - ~/.aura-health/config.json
     primaryEnv: DASHSCOPE_API_KEY
+    homepage: https://github.com/Cartmanfku/aura_health_profile
 ---
 
 # Aura Health Profile（简体中文说明）
 
 > 与英文版 `SKILL.md` 内容对应；命令与路径与英文版一致。
 
-慢性病护理工作流：**解析图片 → 结构化记录与指标 → 完整档案 MD/PDF → 复诊简报（基于 profile 的摘要，生成 MD/PDF + 样式化图片）**。请优先运行 `{baseDir}/scripts/` 下随附的 Python 脚本，不要随意手写重复调用 API。
+慢性病护理工作流：**解析图片与 PDF 页面 → 结构化记录与指标 → 完整档案 MD/PDF → 复诊简报（基于 profile 的摘要，生成 MD/PDF + 样式化图片）**。请优先运行 `{baseDir}/scripts/` 下随附的 Python 脚本，不要随意手写重复调用 API。
+
 
 ## 环境与首次配置
 
 **所需条件**
 
 - **Python 3** 及 `{baseDir}/requirements.txt` 中的包（通过下文命令安装）。
-- **PDF（可选，强烈推荐）** — 将 Markdown 导出为 PDF 时，按以下顺序优先：**(1)** 若智能体已安装 **pdf-generator** 技能，按该技能说明生成 PDF；**(2)** 否则若 `PATH` 中有 [pandoc](https://pandoc.org)（**不是** pip 包，需单独安装可执行文件，例如 macOS：`brew install pandoc`），直接用 pandoc 转换；**(3)** 否则运行 `{baseDir}/scripts/md_to_pdf.py`（内部有 pandoc 则用 pandoc，否则用 `requirements.txt` 中的 **fpdf2**）。中文 / CJK 或复杂排版时，优先使用 (1) 或 (2)，避免仅依赖 (3) 中的 fpdf2 回退。
+- **PDF（可选，强烈推荐）** — 将 Markdown 导出为 PDF 时，按以下顺序优先：**(1)** 若智能体已安装 **pdf-generator** 技能，按该技能说明生成 PDF；**(2)** 否则若 `PATH` 中有 [pandoc](https://pandoc.org)（**不是** pip 包，需单独安装可执行文件，例如 macOS：`brew install pandoc`），直接用 pandoc 转换；**(3)** 否则运行 `{baseDir}/scripts/md_to_pdf.py`（有 pandoc 则用 pandoc，否则 **mistune + ReportLab**：从 Markdown AST 直接排版 PDF；中文等 CJK 在找到系统字体或设置 `AURA_PDF_FONT` 指向 `.ttf`/`.ttc` 时嵌入）。复杂 Markdown 排版仍建议优先 (1) 或 (2)。
 - **DashScope API key**（阿里云百炼 / 模型服务），由 `{baseDir}/scripts/config.py` 读取：  
   - 推荐：`export DASHSCOPE_API_KEY="sk-..."`  
   - 或：`~/.aura-health/config.json` 中配置 `{ "dashscope_api_key": "sk-..." }`
@@ -46,13 +48,26 @@ metadata:
 
 `ONBOARD_CN.md` 已包含环境检查、API key 配置与连通性验证、PDF 工具选择、常用语言配置、以及安装完成后的示例流程。
 
+## 构建模式选择
+
+在执行合并脚本前，先选择模式（解析脚本在两种模式下相同）：
+
+- **快速合并模式（默认）**  
+  - 脚本：`build_profile.py` / `update_profile.py`  
+  - 适用于资料规模较小、时间跨度有限的场景。
+- **分期汇总模式**  
+  - 脚本：`build_profile_sharded.py` / `update_profile_sharded.py`  
+  - 适用于多年累积资料、PDF 较多或中间文件体量较大的场景。
+
+经验规则：若中间文件较多（例如 >50）或跨多年，优先使用**分期汇总模式**。
+
 ## 路径说明
 
 | 用途 | 路径 |
 |------|------|
-| 单张图片对应的中间 Markdown | `~/.aura-health/intermediate/{date}_{type}_{hash8}.md` |
+| 单张图或 PDF 单页对应的中间 Markdown | `~/.aura-health/intermediate/{date}_{type}_{hash8}.md` |
 | 时序指标 | `~/.aura-health/metrics.json` |
-| 已处理图片哈希（增量） | `~/.aura-health/processed.json` |
+| 已处理内容哈希（增量；整图文件或 PDF 按页摘要） | `~/.aura-health/processed.json` |
 | 最近一次构建/更新的 QC（JSON） | `~/.aura-health/last_profile_qc.json` |
 | 档案合并状态（更新模式） | `~/.aura-health/profile_merge_state.json` |
 | 完整档案 MD/PDF | `~/Documents/AuraHealth/health_profile_YYYYMMDD.md` 及 `.pdf` |
@@ -64,10 +79,10 @@ metadata:
 
 - `{baseDir}/SKILL.md` — 英文主文档（ClawHub 以其中元数据为准）  
 - `{baseDir}/SKILL_CN.md` — 本简体中文说明  
-- `{baseDir}/ONBOARD.md`、`{baseDir}/README.md`、`{baseDir}/PUBLISHING.md`、`{baseDir}/LICENSE` — 首次安装说明与文档（`LICENSE` 为 MIT-0）  
+- `{baseDir}/ONBOARD.md`、`{baseDir}/README.md`、`{baseDir}/PUBLISHING_CN.md`、`{baseDir}/PUBLISHING.md`、`{baseDir}/CHANGELOG_CN.md`、`{baseDir}/CHANGELOG.md`、`{baseDir}/LICENSE` — 安装说明、发布指南、变更日志与许可（`LICENSE` 为 MIT-0）  
 - `{baseDir}/requirements.txt` — Python 依赖  
 - `{baseDir}/.clawhubignore` — 发布打包时排除的路径  
-- `{baseDir}/scripts/` — 已包含：`config.py`、`vision_parser.py`、`intermediate_qc.py`、`build_profile.py`、`update_profile.py`、`profile_merge_state.py`、`md_to_pdf.py`、`generate_brief.py`  
+- `{baseDir}/scripts/` — 已包含：`config.py`、`vision_parse_common.py`、`vision_parser.py`、`pdf_vision_parser.py`、`pdf_bundle_builder.py`、`intermediate_qc.py`、`build_profile.py`、`build_profile_sharded.py`、`update_profile.py`、`update_profile_sharded.py`、`profile_merge_state.py`、`md_to_pdf.py`、`generate_brief.py`  
 - `{baseDir}/references/medical_reference.md`、`{baseDir}/references/medical_reference_cn.md` — 英文 / 简体中文术语参考  
 - `{baseDir}/assets/profile_template.md`、`{baseDir}/assets/profile_template_cn.md`、`{baseDir}/assets/brief_template.md`、`{baseDir}/assets/brief_template_cn.md` — 英文 / 简体中文模板  
 
@@ -77,46 +92,39 @@ metadata:
 
 **适用场景：** 第一次使用，或用户要求重建 / 初始化病历档案。
 
-1. **解析图片**  
-   - 扫描用户指定目录中的 `.jpg` / `.jpeg` / `.png`。  
-   - 对每个文件调用 Qwen 3.6 Plus 抽取结构化文本。  
-   - 按上文命名规则，在 `~/.aura-health/intermediate/` 下每张图写一个中间 Markdown。  
-   - 将抽取的数值型检验指标追加到 `~/.aura-health/metrics.json`（按时间排序）。  
-   - 将文件内容哈希写入 `~/.aura-health/processed.json`，供后续增量解析跳过已处理文件。  
-   - 实现：`{baseDir}/scripts/vision_parser.py`（用户传入图片目录）。脚本会**每处理 `--batch-size` 张图片**（默认 `5`）将 `processed.json` 与 `metrics.json` 写回磁盘，减轻 API 限流或超时导致的结果丢失；需要最稳妥保存可设 `--batch-size 1`。**进度**（总张数、已处理张数、本运行新写入数、预计剩余时间）输出到 **stderr**；新生成的中间稿路径仍在 **stdout**。**`--quiet`** 可关闭进度行（分批保存仍会执行）。**Ctrl+C** 中断前会保存当前进度。
+1. **解析输入（图片与 PDF 分两个脚本）**  
+   - **栅格图**（`.jpg` / `.jpeg` / `.png` / `.webp`）：`{baseDir}/scripts/vision_parser.py`，每文件 → 一个中间 Markdown。`processed.json` 与 `metrics.json` 按 `--batch-size`（默认 `5`，建议不稳网络用 `1`）分批落盘；**每张图成功后会先写出 `.md` 再进入后续页**；若中途失败，已写出的 `.md` 仍保留。若进程在写出 `.md` 之后、尚未把哈希刷入 `processed.json` 就崩溃，下次运行仍会通过 `vision_parse_common.load_existing_intermediate_hashes()` 扫描注释头跳过重复。**Ctrl+C** 会保存当前内存中的状态。  
+   - **PDF**：`{baseDir}/scripts/pdf_vision_parser.py`，**PyMuPDF** 逐页栅格化，**每页一个**中间稿。**每页成功后立即**写出该页 `.md` 并 **flush** `processed.json` / `metrics.json`，长报告中途失败时已完成页不丢；不加 `--force` 再跑即可只补未成功的页。**报告日期与文档类型**以 **第 1 页（封面）** 为准，并写回每一页的 `## Document metadata`（内页模型输出会被规范成与首页一致）。提示词与 RGB 渲染有助于减轻中文乱码。长文档可自动生成压缩 bundle（`--bundle-threshold-pages`、`--bundle-chunk-pages`，`--no-bundle` 可关闭），构建档案时可通过 `build_profile.py --pdf-input-mode auto|bundle` 优先使用 bundle。
 
-   **可执行命令**（在 `{baseDir}` 下，并已配置 API key；若已写入 `~/.aura-health/config.json` 可省略 `export`）：
+   **图片 — 可执行命令**（在 `{baseDir}` 下，并已配置 API key）：
 
    ```bash
    cd "/path/to/aura_health_profile"   # 你的 {baseDir}
    export DASHSCOPE_API_KEY="sk-REPLACE_WITH_YOUR_KEY"
    ./.venv/bin/python3 scripts/vision_parser.py "/absolute/path/to/folder/with/photos"
-   ```
-
-   包含子目录：
-
-   ```bash
    ./.venv/bin/python3 scripts/vision_parser.py --recursive "/absolute/path/to/folder/with/photos"
    ```
 
-   不使用虚拟环境时：
+   可选：`--force`、`--model MODEL`、`--batch-size N`、`--quiet`。
+
+   **PDF — 可执行命令**：
 
    ```bash
-   cd "/path/to/aura_health_profile"
-   export DASHSCOPE_API_KEY="sk-REPLACE_WITH_YOUR_KEY"
-   python3 scripts/vision_parser.py "/absolute/path/to/folder/with/photos"
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py "/absolute/path/to/folder/with/pdfs"
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py --recursive "/absolute/path/to/folder/with/pdfs"
    ```
 
-   可选参数：`--force` 即使哈希已在 `processed.json` 中也重新解析；`--model MODEL` 覆盖视觉模型（默认 `qwen3.6-plus`，环境变量 `AURA_VISION_MODEL`）；`--batch-size N` 每处理 *N* 张图落盘一次（默认 `5`）；`--quiet` 不打印 stderr 上的进度与 ETA。
+   可选：`--force`、`--model MODEL`、`--pdf-zoom Z`、`--quiet`。
 
 2. **合并为完整 Markdown**  
-   - 读取全部 `~/.aura-health/intermediate/*.md`。  
-   - 使用 `{baseDir}/assets/profile_template.md` 调用 Qwen 3.6 Plus，生成按时间线、已去重的单一档案。  
-   - 保存为 `~/Documents/AuraHealth/health_profile_YYYYMMDD.md`。  
-   - 写入 `~/.aura-health/profile_merge_state.json`，供后续增量更新识别「已合并」来源。  
-   - 实现：`{baseDir}/scripts/build_profile.py`。在调用模型前会对中间稿做 **QC**：**重复**（与更早文件同源图 sha256 相同，或归一化正文与更早文件相同）或 **异常**（缺少 sha 注释、过短、缺少约定小节、大量替换字符等）的文件 **不参与** 合并，并写入 `~/.aura-health/last_profile_qc.json`，在输出 Markdown 末尾附 **Build QC** 表。仅通过 QC 的文件会送入模型；合并状态只记录 **已纳入** 的源图哈希。
+   - 两种脚本都会生成 `health_profile_YYYYMMDD.md`，并写入合并状态。  
+   - **注意：本步骤不会自动转 PDF**；PDF 需要执行第 3 步。
 
-   **可执行命令**：
+   **快速合并模式（`build_profile.py`）**
+   - 读取全部 `~/.aura-health/intermediate/*.md`，一次性合并。
+   - 在调用模型前会做 **QC**：重复或异常中间稿不参与合并；结果写入 `~/.aura-health/last_profile_qc.json`，并在输出 Markdown 末尾附 **Build QC** 表。
+
+   **可执行命令（快速合并模式）**：
 
    ```bash
    cd "/path/to/aura_health_profile"
@@ -134,8 +142,20 @@ metadata:
 
    可选：`--model MODEL` 覆盖文本模型（默认 `qwen3.6-plus`，环境变量 `AURA_TEXT_MODEL`）。
 
+   **分期汇总模式（`build_profile_sharded.py`）**
+   - 先按时间分片（半年）生成阶段汇总，再做最终合并。
+   - 会额外生成分片产物：`~/.aura-health/period_summaries/period_profile_YYYYH1.md` / `period_profile_YYYYH2.md`（及可能的 `period_profile_undated.md`）。
+
+   **可执行命令（分期汇总模式）**：
+
+   ```bash
+   ./.venv/bin/python3 scripts/build_profile_sharded.py
+   ```
+
+   常用参数：`--shard-mode half-year`（`year` 已弃用，传入时会自动按 `half-year` 处理）、`--shard-max-chars N`、`--pdf-input-mode auto|raw|bundle`、`--pdf-bundle-threshold-pages N`、`--date YYYYMMDD`。
+
 3. **导出 PDF**  
-   - 将第 2 步的 Markdown 转为 `~/Documents/AuraHealth/health_profile_YYYYMMDD.pdf`（或你指定的路径）。**优先级：** **(1)** 若已安装 **pdf-generator** 技能，本步用该技能完成 Markdown → PDF。 **(2)** 否则若 `PATH` 中有 `pandoc`，直接对 `.md` 调用 pandoc（例如 `pandoc … -o …pdf`）。 **(3)** 否则运行 `{baseDir}/scripts/md_to_pdf.py`（内部有 pandoc 则用 pandoc，否则 **fpdf2**；拉丁文尚可；中文 / CJK 或复杂排版请优先 (1) 或 (2)，或安装 [pandoc](https://pandoc.org)）。
+   - 将第 2 步的 Markdown 转为 `~/Documents/AuraHealth/health_profile_YYYYMMDD.pdf`（或你指定的路径）。**优先级：** **(1)** 若已安装 **pdf-generator** 技能，本步用该技能完成 Markdown → PDF。 **(2)** 否则若 `PATH` 中有 `pandoc`，直接对 `.md` 调用 pandoc（例如 `pandoc … -o …pdf`）。 **(3)** 否则运行 `{baseDir}/scripts/md_to_pdf.py`（有 pandoc 则用 pandoc，否则 **mistune + ReportLab**；CJK 依赖系统字体或环境变量 `AURA_PDF_FONT`；复杂排版请优先 (1) 或 (2)，或安装 [pandoc](https://pandoc.org)）。
 
    **可执行命令**（采用第 **(3)** 步、使用 `md_to_pdf.py` 时）— 使用 `build_profile.py` 打印的 `.md` 路径，或按当天日期拼路径：
 
@@ -161,38 +181,35 @@ metadata:
 
 **适用场景：** 用户追加了新图片。
 
-1. **只解析新图**（哈希不在 `processed.json` 中）；追加新的中间 Markdown，并更新 `metrics.json` / `processed.json`。脚本与模式一第 1 步相同：`{baseDir}/scripts/vision_parser.py`。默认会跳过已在 `processed.json` 中的内容哈希；仅在需要强制重抽时使用 `--force`。分批落盘、stderr 进度、`--batch-size`、`--quiet`、Ctrl+C 保存行为与模式一第 1 步一致。
+1. **只解析新图或新 PDF 页**（哈希不在 `processed.json` 中）；追加中间 Markdown，并更新 `metrics.json` / `processed.json`。新图用 `{baseDir}/scripts/vision_parser.py`，新 PDF 用 `{baseDir}/scripts/pdf_vision_parser.py`（续跑、落盘规则与模式一第 1 步一致）。
 
-   **可执行命令** — 指向存放**新照片**的文件夹（也可仍指向原文件夹——仅处理尚未见过的文件）：
+   **新图**：
 
    ```bash
    cd "/path/to/aura_health_profile"
    export DASHSCOPE_API_KEY="sk-REPLACE_WITH_YOUR_KEY"
    ./.venv/bin/python3 scripts/vision_parser.py "/absolute/path/to/folder/with/new/photos"
-   ```
-
-   包含子目录：
-
-   ```bash
    ./.venv/bin/python3 scripts/vision_parser.py --recursive "/absolute/path/to/folder/with/new/photos"
    ```
 
-   不使用虚拟环境：
+   **新 PDF**：
 
    ```bash
-   cd "/path/to/aura_health_profile"
-   python3 scripts/vision_parser.py "/absolute/path/to/folder/with/new/photos"
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py "/absolute/path/to/folder/with/new/pdfs"
+   ./.venv/bin/python3 scripts/pdf_vision_parser.py --recursive "/absolute/path/to/folder/with/new/pdfs"
    ```
 
-   可选：`--force`、`--model MODEL`、`--batch-size`、`--quiet`（说明同模式一第 1 步）。
+   可选：`--force`、`--model MODEL`；图片另可加 `--batch-size`、`--quiet`；PDF 另可加 `--pdf-zoom`、`--quiet`。
 
 2. **再次合并**  
-   - 加载 **最新** 的 `~/Documents/AuraHealth/health_profile_*.md`（按文件名中的日期；可用 `--profile` 指定基线），以及 `~/.aura-health/intermediate/` 下相对 `profile_merge_state.json` 而言**尚未合并过**的中间文件。  
-   - 由 Qwen 重排时间线、去重并统一格式。  
-   - 写出新的 `health_profile_YYYYMMDD.md` 并刷新合并状态。  
-   - 实现：`{baseDir}/scripts/update_profile.py`。对**本轮候选的新中间稿**使用与 `build_profile.py` 相同的 **QC**（不作用于基线档案）；排除项写入 `~/.aura-health/last_profile_qc.json`（`label` 为 `update`）并附在输出 Markdown 末尾。合并状态更新为 **此前已合并哈希 ∪ 本轮纳入的新文件源图哈希**。
+   - 两种更新脚本都会读取基线档案与新中间稿，写出新的 `health_profile_YYYYMMDD.md`。  
+   - **注意：本步骤不会自动转 PDF**；PDF 需要执行第 3 步。
 
-   **可执行命令** — 在完成第 1 步且 `~/Documents/AuraHealth/` 下已有基线档案后：
+   **快速合并模式（`update_profile.py`）**
+   - 基于 merge state 识别“未合并过”的新来源并合并。
+   - 对本轮候选新中间稿执行 **QC**，排除项写入 `~/.aura-health/last_profile_qc.json`（`label=update`）。
+
+   **可执行命令（快速合并模式）** — 在完成第 1 步且 `~/Documents/AuraHealth/` 下已有基线档案后：
 
    ```bash
    cd "/path/to/aura_health_profile"
@@ -230,7 +247,19 @@ metadata:
 
    可选：`--model MODEL`（默认 `qwen3.6-plus`，环境变量 `AURA_TEXT_MODEL`）。
 
-3. **PDF** — 与 **模式一 — 构建** 第 3 步相同：pdf-generator 技能 → pandoc → `md_to_pdf.py`，输入为第 2 步的 Markdown（`update_profile.py` 打印的路径，或 `~/Documents/AuraHealth/health_profile_YYYYMMDD.md`）。`md_to_pdf.py` 的命令示例见上文 **模式一第 3 步**。
+   **分期汇总模式（`update_profile_sharded.py`）**
+   - 仅重算受影响时间分片，再做最终二次合并；适合多年累积的大体量资料。
+   - 会复用/更新 `~/.aura-health/period_summaries/period_profile_YYYYH1.md`、`period_profile_YYYYH2.md`（及可能的 `period_profile_undated.md`）。
+
+   **可执行命令（分期汇总模式）**：
+
+   ```bash
+   ./.venv/bin/python3 scripts/update_profile_sharded.py
+   ```
+
+   常用参数：`--shard-mode half-year`（`year` 已弃用，传入时会自动按 `half-year` 处理）、`--shard-max-chars N`、`--pdf-input-mode auto|raw|bundle`、`--pdf-bundle-threshold-pages N`、`--full`、`--profile PATH`、`--date YYYYMMDD`。
+
+3. **PDF** — 与 **模式一 — 构建** 第 3 步相同：pdf-generator 技能 → pandoc → `md_to_pdf.py`，输入为第 2 步生成的 Markdown（`update_profile.py` 或 `update_profile_sharded.py` 打印的路径，或 `~/Documents/AuraHealth/health_profile_YYYYMMDD.md`）。`md_to_pdf.py` 的命令示例见上文 **模式一第 3 步**。
 
 ## 模式三 — 复诊简报（`brief`）
 
@@ -275,4 +304,4 @@ metadata:
 
 ## OpenClaw 安装提示
 
-将 `aura_health_profile/` 技能目录复制或符号链接到智能体工作区的 `skills/`（或 `skills.load.extraDirs` 所配路径），然后开启新会话，使 `openclaw skills list` 能看到 `aura_health_profile`。发布到 ClawHub 时若 slug 不接受下划线，可改用带连字符的目录名 — 见 `{baseDir}/PUBLISHING.md`。
+将 `aura_health_profile/` 技能目录复制或符号链接到智能体工作区的 `skills/`（或 `skills.load.extraDirs` 所配路径），然后开启新会话，使 `openclaw skills list` 能看到 `aura_health_profile`。发布到 ClawHub 时若 slug 不接受下划线，可改用带连字符的目录名 — 见 `{baseDir}/PUBLISHING_CN.md`（英文：`{baseDir}/PUBLISHING.md`）。

@@ -28,6 +28,7 @@ from intermediate_qc import (
     partition_intermediates,
     write_qc_artifact,
 )
+from pdf_bundle_builder import choose_intermediates_for_profile
 from profile_merge_state import (
     load_merge_state,
     list_new_intermediate_paths,
@@ -76,7 +77,21 @@ def main() -> None:
         action="store_true",
         help="Send all intermediate files to the model (reconcile with baseline profile)",
     )
+    parser.add_argument(
+        "--pdf-input-mode",
+        choices=("auto", "raw", "bundle"),
+        default="auto",
+        help="How to feed PDF intermediates into merge (default: auto).",
+    )
+    parser.add_argument(
+        "--pdf-bundle-threshold-pages",
+        type=int,
+        default=3,
+        help="In auto mode, use bundle when PDF pages > N (default: 3).",
+    )
     args = parser.parse_args()
+    if args.pdf_bundle_threshold_pages < 1:
+        raise SystemExit("--pdf-bundle-threshold-pages must be >= 1")
 
     ensure_state_dirs()
     base = skill_dir()
@@ -131,10 +146,32 @@ def main() -> None:
         )
 
     if not new_paths:
-        print("No new intermediate files to merge. Run vision_parser.py on new images first.")
+        print(
+            "No new intermediate files to merge. Run vision_parser.py (images) or "
+            "pdf_vision_parser.py (PDFs) on new inputs first."
+        )
+        return
+    merge_inputs, skipped_by_policy, policy_warnings = choose_intermediates_for_profile(
+        new_paths,
+        mode=args.pdf_input_mode,
+        threshold_pages=args.pdf_bundle_threshold_pages,
+    )
+    for msg in policy_warnings:
+        print(f"Bundle policy: {msg}", file=sys.stderr)
+    if skipped_by_policy:
+        print(
+            f"Bundle policy skipped {len(skipped_by_policy)} candidate file(s).",
+            file=sys.stderr,
+        )
+    if not merge_inputs:
+        print(
+            "No candidate files selected after PDF input policy "
+            f"(mode={args.pdf_input_mode}).",
+            file=sys.stderr,
+        )
         return
 
-    included, excluded = partition_intermediates(new_paths)
+    included, excluded = partition_intermediates(merge_inputs)
     for x in excluded:
         print(f"QC exclude {x.file}: {x.reason} ({x.detail})", file=sys.stderr)
     write_qc_artifact(

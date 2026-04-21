@@ -1,48 +1,57 @@
 # Aura Health Profile（OpenClaw 技能）
 
 **将繁琐的病历管理，变为安心的日常陪伴。**  
-一款专为慢性病患者设计的智能健康助手技能，基于阿里云百炼 Qwen 与 Wan 模型，帮你把散乱的化验单、病历、药盒说明变成清晰易懂的健康档案与复诊简报。
+面向慢性病护理的 OpenClaw 技能，基于**阿里云百炼**：**Qwen** 负责图文理解与档案合并，**Wan** 负责复诊简报配图。把相册里的化验单照片、**扫描版 PDF**、病历与药盒说明等零散资料，整理成一份可长期维护的**健康档案**，并可选生成**复诊简报**（Markdown、PDF 与一页式配图）。
 
 英文版请见：`README.md`
 
 ## 背景
 
-当慢性病管理成为一份“隐形工作”，化验单上密密麻麻的专业术语和上下箭头让人困惑紧张，散乱的纸质病历、化验单、药盒难以整理，复诊时常常翻箱倒柜找不到需要的文件，甚至不慎丢失。
+慢性病管理常常像一份「隐形工作」：化验单术语难懂、趋势难对比，资料又散落在手机相册、下载文件夹和纸质单据里。本技能帮助把材料**结构化、可追溯地归档**，复诊前查阅更省心，长期留存也更清晰。
 
 ## 功能一览
 
-- **模式一（`build`）**：解析医学图片，构建完整健康档案（`.md` / `.pdf`）。
-- **模式二（`update`）**：增量处理新资料，在原有档案基础上自动合并更新。
-- **模式三（`brief`）**：生成复诊简报（`.md` + 样式化图片 + `.pdf`），便于门诊快速沟通。
-- **结构化沉淀**：将化验趋势、检查结果、用药信息统一整理为长期可追踪记录。
-- **多模型协同**：Qwen 负责理解与整合医疗内容，Wan 负责可视化简报生成。
+- **模式一（`build`）**：首次或全量重建。支持**栅格图**（JPEG/PNG/WebP）与 **PDF**（每页转图后经**视觉模型**解析；长报告可先打成 **bundle** 再参与合并），输出 `health_profile_*.md`，PDF 需按文档单独导出。
+- **模式二（`update`）**：**增量**解析：仅处理 `processed.json` 中尚未记录的新图或新 PDF 页，再与既有档案合并。
+- **模式三（`brief`）**：基于档案生成**复诊简报**（`revisit_brief_*.md`）、**医生向**一页图、可选的**患者向**漫画格图及简报 PDF（可跳过第二次出图以节省费用）。
+- **两种合并方式**：资料量一般时用**快速合并**（`build_profile.py` / `update_profile.py`）；**多年累积**或图片、PDF **很多**时，推荐使用**分期汇总**（`build_profile_sharded.py` / `update_profile_sharded.py`）。
+- **结构化沉淀**：中间稿与指标在 `~/.aura-health/`，成品档案与简报在 `~/Documents/AuraHealth/`（路径与命令见 `SKILL_CN.md`）。
+- **Markdown → PDF**：优先 **pdf-generator** 技能或 **pandoc**；否则使用 **`md_to_pdf.py`**（支持配置**中文字体**等 CJK 排版）。
 
 ## 工作流程图示
 
 ```mermaid
 flowchart LR
-    A[输入资料\n化验单/病历/药盒说明] --> B[模式一或模式二\n图片解析与结构化]
-    B --> C[健康档案输出\nMarkdown + PDF]
-    C --> D[模式三\n复诊简报生成]
-    D --> E[最终产物\nbrief.md + brief.png + brief.pdf]
+    A[输入资料\n照片/PDF/病历/药盒] --> B[模式一或模式二\n视觉解析与结构化]
+    B --> C[健康档案\nMarkdown + PDF]
+    C --> D[模式三\n复诊简报]
+    D --> E[产出物\n简报 md + 配图 + pdf]
 ```
 
-## Status
+## 当前状态
 
-- **Shipped:** Mode 1 (build), Mode 2 (update), and Mode 3 (revisit brief).
-
+- **已发布：** 模式一至三（build / update / brief）、PDF 全流程、快速合并与分期汇总、中英模板与文档。
+- **当前版本：** **v1.1.0** — 详见 `CHANGELOG_CN.md` / `CHANGELOG.md`。
 
 ## 快速开始
 
-首次使用建议先阅读 `ONBOARD.md`。
+首次安装与自检请阅读 **`ONBOARD_CN.md`**（英文：**`ONBOARD.md`**）。
 
-详细前置条件、路径约定和各模式命令，请查看 `SKILL.md`（英文）或 `SKILL_CN.md`（简体中文）。
-
+环境变量、路径与各模式命令见 **`SKILL_CN.md`**（英文：**`SKILL.md`**）。
 
 ## GitHub
 
 - 仓库地址：https://github.com/Cartmanfku/aura_health_profile
 
+## 技能地址
+
+- **DeskClaw：** [skills.deskclaw.me/skills/aura-health-profile](https://skills.deskclaw.me/skills/aura-health-profile)  
+- **ModelScope：** [modelscope.cn/skills/cartman/aura_health_profile](https://modelscope.cn/skills/cartman/aura_health_profile)  
+
+## 作者与联系
+
+- **称呼：** momo哈吉米  
+- **邮箱：** [cartman.djw@gmail.com](mailto:cartman.djw@gmail.com)  
 
 ## 项目承诺
 
@@ -50,7 +59,7 @@ flowchart LR
 
 ## ClawHub
 
-发布协议遵循 **MIT-0**（符合 [ClawHub policy](https://github.com/openclaw/clawhub/blob/main/docs/skill-format.md)）。发布前检查项和 CLI 说明见 `PUBLISHING.md`。
+发布协议遵循 **MIT-0**（符合 [ClawHub policy](https://github.com/openclaw/clawhub/blob/main/docs/skill-format.md)）。发布前检查项与 CLI 说明见 `PUBLISHING_CN.md`（英文：`PUBLISHING.md`）；版本变更见 `CHANGELOG_CN.md`（英文：`CHANGELOG.md`）。
 
 ## License
 

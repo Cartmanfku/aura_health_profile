@@ -89,7 +89,7 @@ def load_api_key() -> str:
     if key:
         return key
     raise SystemExit(
-        "Missing API key: set DASHSCOPE_API_KEY or ~/.aura-health/config.json "
+        f"Missing API key: set DASHSCOPE_API_KEY or {CONFIG_PATH} "
         'with {"dashscope_api_key": "sk-..."}'
     )
 

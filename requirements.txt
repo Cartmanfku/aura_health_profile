@@ -2,9 +2,10 @@
 #
 # PDF (md_to_pdf.py): pandoc is NOT a pip package — install the binary separately
 #   (e.g. brew install pandoc). The script uses pandoc when it is on PATH; otherwise
-#   it falls back to fpdf2 (listed below). For Chinese/CJK or complex Markdown,
-#   installing pandoc is strongly recommended.
+#   mistune (AST) + ReportLab with a system CJK font or AURA_PDF_FONT.
+#   For the most complex Markdown, pandoc remains the best option.
 
 requests>=2.28.0
-markdown>=3.4
-fpdf2>=2.7.0
+mistune>=3.0.0
+reportlab>=4.0.0
+pymupdf>=1.24.0

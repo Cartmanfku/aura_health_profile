@@ -1,4 +1,4 @@
-"""Classify intermediate Markdown from vision_parser: usable vs duplicate vs abnormal."""
+"""Classify intermediate Markdown from vision_parser / pdf_vision_parser: usable vs duplicate vs abnormal."""
 
 from __future__ import annotations
 

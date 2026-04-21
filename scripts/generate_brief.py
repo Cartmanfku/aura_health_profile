@@ -519,19 +519,7 @@ Profile markdown:
             timeout_seconds=args.timeout,
             poll_interval=args.poll_interval,
         )
-    # Try CJK-aware PDF generator first, fall back to md_to_pdf
-    scripts_dir = Path(__file__).resolve().parent
-    gen_cjk = scripts_dir / "gen_cjk_pdf.py"
-    if gen_cjk.exists():
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, str(gen_cjk), str(out_md), str(out_pdf)],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode != 0:
-            md_to_pdf(out_md, out_pdf)
-    else:
-        md_to_pdf(out_md, out_pdf)
+    md_to_pdf(out_md, out_pdf)
 
     print(out_md)
     print(brief_png)

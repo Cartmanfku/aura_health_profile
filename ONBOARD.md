@@ -62,12 +62,12 @@ Check tools:
 
 ```bash
 pandoc --version
-./.venv/bin/python3 -c "import fpdf; print('fpdf2 OK')"
+./.venv/bin/python3 -c "import mistune, reportlab; print('mistune + reportlab OK')"
 ```
 
 Guidance:
 - If `pandoc` exists, PDF output quality (especially Chinese/CJK and complex Markdown) is usually better.
-- If `pandoc` is missing, `md_to_pdf.py` still works via `fpdf2` fallback.
+- If `pandoc` is missing, `md_to_pdf.py` still works via **mistune + ReportLab** (set `AURA_PDF_FONT` to a CJK `.ttf`/`.ttc` if no suitable system font is found).
 
 ## 4) Ask user for preferred language and configure it (default: Simplified Chinese)
 
@@ -92,9 +92,21 @@ Notes:
 - `zh-CN` selects Chinese template/reference (`*_cn.md`) for build/update.
 - If language is not Chinese, system falls back to English assets.
 
-## 5) Onboarding complete: introduce features and run examples from README
+## 5) Ask user to choose merge mode (default: Quick Merge)
 
-After steps 1-4 are done:
+Default to **Quick Merge mode** unless the user explicitly asks for **Staged Summary mode**.
+
+Explain and confirm one of:
+
+- **Quick Merge mode (default):** `build_profile.py` / `update_profile.py` — prefer when the record set is smaller and the timeline span is limited.
+- **Staged Summary mode:** `build_profile_sharded.py` / `update_profile_sharded.py` — prefer for multi-year archives or many PDFs / large intermediate sets.
+
+Recommendation:
+- If records are large, multi-year, or include many PDFs/pages, suggest **Staged Summary mode**.
+
+## 6) Onboarding complete: introduce features and run examples from README
+
+After steps 1-5 are done:
 - Briefly explain shipped features (Mode 1 build, Mode 2 update).
 - Point user to `README.md`, then `SKILL.md` / `SKILL_CN.md` for full details.
 - Run a minimal example with user-provided image folder:
@@ -105,11 +117,25 @@ After steps 1-4 are done:
 ./.venv/bin/python3 scripts/md_to_pdf.py "$HOME/Documents/AuraHealth/health_profile_$(date +%Y%m%d).md"
 ```
 
+For PDF reports (separate script):
+
+```bash
+./.venv/bin/python3 scripts/pdf_vision_parser.py "/absolute/path/to/pdfs"
+./.venv/bin/python3 scripts/build_profile.py
+```
+
 If user adds new images later:
 
 ```bash
 ./.venv/bin/python3 scripts/vision_parser.py "/absolute/path/to/new_images"
 ./.venv/bin/python3 scripts/update_profile.py
+```
+
+If user selected **Staged Summary mode**, replace merge commands with:
+
+```bash
+./.venv/bin/python3 scripts/build_profile_sharded.py
+./.venv/bin/python3 scripts/update_profile_sharded.py
 ```
 
 ---
